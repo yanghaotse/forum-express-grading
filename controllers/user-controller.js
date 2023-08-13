@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs')
 const db = require('../models')
 const { User, Comment, Restaurant, Favorite, Like, Followship } = db
 const { PROFILE_DEFAULT_AVATAR, imgurFileHandler } = require('../helpers/file-helper')
-
+const { getUser } = require('../helpers/auth-helpers')
 const userController = {
   signUpPage: (req, res) => {
     res.render('signup')
@@ -42,17 +42,46 @@ const userController = {
     res.redirect('/signin')
   },
   getUser: (req, res, next) => {
-    const currentUserId = req.user ? req.user.id : {}
-    return Promise.all([User.findByPk(req.params.id), Comment.findAndCountAll({
-      nest: true,
-      where: { userId: req.params.id },
-      include: Restaurant
+    // 已評論餐廳、已收藏餐廳、followings、followers
+    const currentUserId = getUser(req).id
+    return User.findByPk(req.params.id, {
+      include: [
+        { model: Comment, include: Restaurant },
+        { model: Restaurant, as: 'FavoritedRestaurants' },
+        { model: User, as: 'Followers' },
+        { model: User, as: 'Followings' }
+      ]
     })
-    ])
-      .then(([user, comment]) => {
-        if (!user) throw new Error("Profile didn't exist")
-        const restaurants = comment.rows.map(item => item.Restaurant.toJSON())
-        return res.render('users/profile', { user: user.toJSON(), restaurants, commentCount: comment.count, currentUserId })
+      .then(user => {
+        console.log('currentUserId:', currentUserId)
+
+        if (!user) throw new Error("User didn't exist!")
+        const result = user.toJSON()
+        const commentRestaurant = result.Comments.map(item => item.Restaurant)
+        // 篩選掉重複的commentRestaurant
+        const uniqueCommentRestaurant = commentRestaurant.reduce((uniqueArr, currentObj) => {
+          // 檢查目前的 id 是否已經在 uniqueArr 中存在
+          const exists = uniqueArr.some(obj => obj.id === currentObj.id)
+          // 如果 id 還不存在，將目前的物件加入 uniqueArr
+          if (!exists) {
+            uniqueArr.push(currentObj)
+          }
+          return uniqueArr
+        }, [])
+        const commentCount = uniqueCommentRestaurant.length
+        const favoritedRestaurantCount = result.FavoritedRestaurants.length
+        const followingCount = result.Followings.length
+        const followerCount = result.Followers.length
+
+        res.render('users/profile', {
+          userData: result,
+          currentUserId,
+          commentCount,
+          favoritedRestaurantCount,
+          followingCount,
+          followerCount,
+          uniqueCommentRestaurant
+        })
       })
       .catch(err => next(err))
   },
