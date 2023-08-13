@@ -99,6 +99,7 @@ const restaurantController = {
       ]
     })
       .then(restaurants => {
+        if (!restaurants) throw new Error("restaurants didn't exist!")
         const result = restaurants.map(restaurant => ({
           ...restaurant.toJSON(),
           favoritedCount: restaurant.FavoritedUsers.length,
@@ -106,7 +107,6 @@ const restaurantController = {
         }))
           .sort((a, b) => b.favoritedCount - a.favoritedCount)
           .slice(0, 10)
-
         res.render('top-restaurants', { restaurants: result })
       })
       .catch(err => next(err))
